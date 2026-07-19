@@ -1,18 +1,27 @@
-"use server";
-import { env } from "@/lib/env";
-import { requireUser } from "@/app/data/user/require-user";
-import { prisma } from "@/lib/db";
-import { stripe } from "@/lib/stripe";
-import { ApiResponse } from "@/lib/types";
-import { redirect } from "next/navigation";
-import { Stripe } from "stripe";
-import arcjet, { fixedWindow } from "@/lib/arcjet";
-import { request } from "@arcjet/next";
+'use server';
+import { env } from '@/lib/env';
+import { requireUser } from '@/app/data/user/require-user';
+import { prisma } from '@/lib/db';
+import { stripe } from '@/lib/stripe';
+import { ApiResponse } from '@/lib/types';
+import { redirect } from 'next/navigation';
+import { Stripe } from 'stripe';
+import arcjet, { fixedWindow } from '@/lib/arcjet';
+import { request } from '@arcjet/next';
+
+function isRedirectError(error: unknown): error is Error & { digest: string } {
+  return (
+    error instanceof Error &&
+    'digest' in error &&
+    typeof error.digest === 'string' &&
+    error.digest.startsWith('NEXT_REDIRECT')
+  );
+}
 
 const aj = arcjet.withRule(
   fixedWindow({
-    mode: "LIVE",
-    window: "1m",
+    mode: 'LIVE',
+    window: '1m',
     max: 5,
   }),
 );
@@ -28,13 +37,13 @@ export async function enrollInCourseAction(
     if (decision.isDenied()) {
       if (decision.reason.isRateLimit())
         return {
-          status: "error",
-          message: "You have blocked due to Rate Limiting ",
+          status: 'error',
+          message: 'You have blocked due to Rate Limiting ',
         };
 
       return {
-        status: "error",
-        message: "Blocked by arcjet",
+        status: 'error',
+        message: 'Blocked by arcjet',
       };
     }
 
@@ -51,8 +60,8 @@ export async function enrollInCourseAction(
     });
     if (!course) {
       return {
-        status: "error",
-        message: "Course not found",
+        status: 'error',
+        message: 'Course not found',
       };
     }
     let stripeCustomerId: string;
@@ -98,10 +107,10 @@ export async function enrollInCourseAction(
       },
     });
 
-    if (existingEnrollment?.status === "Active") {
+    if (existingEnrollment?.status === 'Active') {
       return {
-        status: "success",
-        message: "You are already enrolled in this Course",
+        status: 'success',
+        message: 'You are already enrolled in this Course',
       };
     }
 
@@ -112,7 +121,7 @@ export async function enrollInCourseAction(
           id: existingEnrollment.id,
         },
         data: {
-          status: "Pending",
+          status: 'Pending',
           amount: course.price,
           updatedAt: new Date(),
         },
@@ -123,7 +132,7 @@ export async function enrollInCourseAction(
           userId: user.id,
           courseId: course.id,
           amount: course.price,
-          status: "Pending",
+          status: 'Pending',
         },
       });
     }
@@ -132,11 +141,11 @@ export async function enrollInCourseAction(
       customer: stripeCustomerId,
       line_items: [
         {
-          price: "price_1Tm9kYRlBj0C7riHgwtnrj9r",
+          price: 'price_1Tm9kYRlBj0C7riHgwtnrj9r',
           quantity: 1,
         },
       ],
-      mode: "payment",
+      mode: 'payment',
       success_url: `${env.BETTER_AUTH_URL}/payment/success`,
       cancel_url: `${env.BETTER_AUTH_URL}/payment/cancel`,
       metadata: {
@@ -146,18 +155,24 @@ export async function enrollInCourseAction(
       },
     });
 
-    checkoutUrl = checkoutSession.url ?? "";
+    checkoutUrl = checkoutSession.url ?? '';
   } catch (error) {
+    if (isRedirectError(error)) {
+      throw error;
+    }
+
     if (error instanceof Stripe.errors.StripeError) {
       return {
-        status: "error",
-        message: "Payment system error. Please try again later",
+        status: 'error',
+        message: 'Payment system error. Please try again later',
       };
     }
+
     return {
-      status: "error",
-      message: "Failed to enroll in Course",
+      status: 'error',
+      message: 'Failed to enroll in Course',
     };
   }
+
   redirect(checkoutUrl);
 }
